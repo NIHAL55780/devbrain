@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background-color: #07090b;
+}
+
+.app-shell {
+  background-image:
+    linear-gradient(rgba(34, 247, 185, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 247, 185, 0.06) 1px, transparent 1px),
+    radial-gradient(circle at top, rgba(45, 243, 255, 0.08), transparent 55%);
+  background-size: 42px 42px, 42px 42px, 100% 100%;
+  background-position: -1px -1px, -1px -1px, center top;
+}
+
+.heading-font {
+  font-family: "Space Grotesk", "IBM Plex Mono", sans-serif;
+}

@@ -5,9 +5,30 @@ import { generateAnswer } from "../services/llmService.js";
 import { setChunks,getChunks } from "../services/store.js";
 
 
+const parseGitHubRepoUrl = (repoUrl) => {
+  try {
+    const url = new URL(repoUrl);
+    if (url.hostname !== "github.com") {
+      return null;
+    }
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length < 2) {
+      return null;
+    }
+    const owner = parts[0];
+    const repo = parts[1].replace(/\.git$/, "");
+    if (!owner || !repo) {
+      return null;
+    }
+    return { owner, repo };
+  } catch (error) {
+    return null;
+  }
+};
+
 export const askQuestion = async (req, res) => {
   try {
-    const { question } = req.body;
+    const { question, history } = req.body;
 
     if (!question) {
       return res.status(400).json({ error: "Question required" });
@@ -29,9 +50,12 @@ export const askQuestion = async (req, res) => {
     console.log("Query embedding length:", queryEmbedding.length);
     // 🔹 Step 2: Retrieve
     const topChunks = getTopChunks(queryEmbedding, chunks, 5);
+    if (!topChunks || topChunks.length === 0) {
+      return res.status(404).json({ error: "No relevant chunks found" });
+    }
 
     // 🔹 Step 3: LLM
-    const answer = await generateAnswer(question, topChunks);
+    const answer = await generateAnswer(question, topChunks, history);
 
     res.json({
       success: true,
@@ -123,9 +147,11 @@ export const analyzeRepo = async (req, res) => {
       return res.status(400).json({ error: "repo url required" });
     }
 
-    const parts = repoUrl.split("/");
-    const owner = parts[3];
-    const repo = parts[4];
+    const parsedRepo = parseGitHubRepoUrl(repoUrl);
+    if (!parsedRepo) {
+      return res.status(400).json({ error: "Invalid GitHub URL" });
+    }
+    const { owner, repo } = parsedRepo;
 
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents`;
 
@@ -135,7 +161,7 @@ export const analyzeRepo = async (req, res) => {
     console.log("Chunks before embedding:", allFiles.length);
 
     if (allFiles.length === 0) {
-      return res.status(400).json({ error: "No valid files found" });
+      return res.status(400).json({ error: "No valid files found or repo is empty" });
     }
 
     // 🔹 Step 2: Extract chunk texts
