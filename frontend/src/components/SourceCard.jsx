@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { githubFileUrl } from "../utils/parseRepo.js";
 
 const clampScore = (score) => {
   const value = Number(score);
@@ -6,23 +7,36 @@ const clampScore = (score) => {
   return Math.max(0, Math.min(1, value));
 };
 
-export default function SourceCard({ source }) {
+export default function SourceCard({ source, repoInfo }) {
   const [open, setOpen] = useState(false);
   const score = clampScore(source.score);
   const percent = Math.round(score * 100);
+  const fileUrl = githubFileUrl(repoInfo, source.file);
 
   return (
     <div className="rounded-xl border border-slate-800 bg-black/60 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-slate-200">{source.file}</p>
-          <p className="text-xs text-slate-500">Similarity score: {percent}%</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {fileUrl ? (
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="break-all text-sm text-neon-cyan hover:underline"
+            >
+              {source.file}
+            </a>
+          ) : (
+            <p className="break-all text-sm text-slate-200">{source.file}</p>
+          )}
+          <p className="mt-1 text-xs text-slate-500">Similarity score: {percent}%</p>
         </div>
         <button
+          type="button"
           onClick={() => setOpen((value) => !value)}
-          className="text-xs text-neon-green transition hover:text-neon-cyan"
+          className="shrink-0 text-xs text-neon-green transition hover:text-neon-cyan"
         >
-          {open ? "HIDE CODE" : "VIEW CODE"}
+          {open ? "HIDE" : "PREVIEW"}
         </button>
       </div>
 
@@ -35,10 +49,6 @@ export default function SourceCard({ source }) {
 
       {open && (
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/90 p-3 text-xs text-slate-200">
-          <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-slate-500">
-            <span>Preview</span>
-            <span>chunk</span>
-          </div>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono">
             {source.preview || "No preview available"}
           </pre>

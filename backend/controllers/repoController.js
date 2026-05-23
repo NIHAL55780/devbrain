@@ -49,7 +49,7 @@ export const askQuestion = async (req, res) => {
     const queryEmbedding = queryEmbeddingArr[0];
     console.log("Query embedding length:", queryEmbedding.length);
     // 🔹 Step 2: Retrieve
-    const topChunks = getTopChunks(queryEmbedding, chunks, 5);
+    const topChunks = getTopChunks(queryEmbedding, chunks, 8, question);
     if (!topChunks || topChunks.length === 0) {
       return res.status(404).json({ error: "No relevant chunks found" });
     }
@@ -79,6 +79,16 @@ const isValidFile = (fileName)=>{
     return ALLOWED_EXTENSIONS.some(ext=>fileName.endsWith(ext));
 };
 
+// Large interview/cheat docs steal retrieval slots from real source files
+const SKIP_FILE_NAMES = new Set(["INTERVIEW_PREP.md"]);
+
+const shouldSkipFile = (filePath) => {
+  const name = filePath.split("/").pop() || filePath;
+  if (SKIP_FILE_NAMES.has(name)) return true;
+  if (/INTERVIEW|CHEATSHEET|STUDY[_-]?GUIDE/i.test(name)) return true;
+  return false;
+};
+
 const chunkText = (text,chunkSize = 1000 , overlap = 200)=>{
     const chunks =[];
     let start = 0;
@@ -103,6 +113,9 @@ const fetchRepoContents = async (url , allFiles = []) =>{
                     continue;   //avoid large files
                 }
                 if(item.path.startsWith(".github")){
+                    continue;
+                }
+                if (shouldSkipFile(item.path)) {
                     continue;
                 }
                 console.log("FILE:", item.path);
