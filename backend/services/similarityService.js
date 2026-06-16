@@ -1,24 +1,3 @@
-export const cosineSimilarity = (A, B) => {
-  if (!A || !B || A.length !== B.length) {
-    return 0;
-  }
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < A.length; i++) {
-    dotProduct += A[i] * B[i];
-    normA += A[i] * A[i];
-    normB += B[i] * B[i];
-  }
-
-  normA = Math.sqrt(normA);
-  normB = Math.sqrt(normB);
-
-  return dotProduct / (normA * normB);
-};
-
 /** Boost chunks whose path matches question intent (e.g. fetch → hooks/useWeather.js) */
 const PATH_BOOST_RULES = [
   {
@@ -43,8 +22,8 @@ const PATH_BOOST_RULES = [
   },
 ];
 
-const scoreChunk = (chunk, queryEmbedding, question = "") => {
-  let score = cosineSimilarity(queryEmbedding, chunk.embedding);
+const applyPathBoost = (chunk, question) => {
+  let score = chunk.score ?? 0;
   const path = chunk.path || "";
 
   for (const rule of PATH_BOOST_RULES) {
@@ -57,29 +36,18 @@ const scoreChunk = (chunk, queryEmbedding, question = "") => {
   return score;
 };
 
-export const getTopChunks = (queryEmbedding, allChunks, topK = 8, question = "") => {
-  const MIN_SCORE = 0.0;
-
-  const scoredChunks = allChunks.map((item) => ({
+export const rerankChunks = (chunks, question, topK = 8) => {
+  const scoredChunks = chunks.map((item) => ({
     ...item,
-    score: scoreChunk(item, queryEmbedding, question),
+    score: applyPathBoost(item, question),
   }));
 
   scoredChunks.sort((a, b) => b.score - a.score);
-
-  console.log(
-    "Top raw scores:",
-    scoredChunks.slice(0, 8).map((c) => ({
-      file: c.path,
-      score: Number(c.score.toFixed(3)),
-    }))
-  );
 
   const seenFiles = new Set();
   const selected = [];
 
   for (const chunk of scoredChunks) {
-    if (chunk.score < MIN_SCORE) continue;
     if (seenFiles.has(chunk.path)) continue;
 
     seenFiles.add(chunk.path);
@@ -87,14 +55,6 @@ export const getTopChunks = (queryEmbedding, allChunks, topK = 8, question = "")
 
     if (selected.length >= topK) break;
   }
-
-  console.log(
-    "Selected for LLM:",
-    selected.map((c) => ({
-      file: c.path,
-      score: Number(c.score.toFixed(3)),
-    }))
-  );
 
   return selected;
 };

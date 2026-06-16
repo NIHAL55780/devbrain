@@ -1,9 +1,8 @@
 import axios from "axios";
-import { getTopChunks } from "../services/similarityService.js";
-import { getEmbeddings } from "../services/embeddingService.js";
+import { indexRepo, searchChunks } from "../services/embeddingService.js";
 import { generateAnswer } from "../services/llmService.js";
-import { setChunks,getChunks } from "../services/store.js";
-
+import { setActiveRepoId, getActiveRepoId } from "../services/repoStore.js";
+import { rerankChunks } from "../services/similarityService.js";
 
 const parseGitHubRepoUrl = (repoUrl) => {
   try {
@@ -26,60 +25,59 @@ const parseGitHubRepoUrl = (repoUrl) => {
   }
 };
 
+const makeRepoId = (owner, repo) => `${owner}_${repo}`;
+
 export const askQuestion = async (req, res) => {
   try {
-    const { question, history } = req.body;
+    const { question, history, repoId: bodyRepoId } = req.body;
 
     if (!question) {
       return res.status(400).json({ error: "Question required" });
     }
 
-    // ✅ Get stored chunks
-    const chunks = getChunks();
-
-    if (!chunks || chunks.length === 0) {
+    const repoId = bodyRepoId || getActiveRepoId();
+    if (!repoId) {
       return res.status(400).json({ error: "No repo analyzed yet" });
     }
 
-    // 🔹 Step 1: Embed question
-    const queryEmbeddingArr = await getEmbeddings([question]);
-    if (!queryEmbeddingArr || queryEmbeddingArr.length === 0 || !queryEmbeddingArr[0]) {
-      return res.status(502).json({ error: "Embedding service unavailable" });
+    const retrievedChunks = await searchChunks(repoId, question, 8);
+    if (!retrievedChunks || retrievedChunks.length === 0) {
+      return res.status(400).json({ error: "No repo analyzed yet" });
     }
-    const queryEmbedding = queryEmbeddingArr[0];
-    console.log("Query embedding length:", queryEmbedding.length);
-    // 🔹 Step 2: Retrieve
-    const topChunks = getTopChunks(queryEmbedding, chunks, 8, question);
+
+    const topChunks = rerankChunks(retrievedChunks, question, 8);
     if (!topChunks || topChunks.length === 0) {
       return res.status(404).json({ error: "No relevant chunks found" });
     }
 
-    // 🔹 Step 3: LLM
     const answer = await generateAnswer(question, topChunks, history);
 
     res.json({
       success: true,
       question,
+      repoId,
       answer,
-      sources: topChunks.map(c => ({
+      sources: topChunks.map((c) => ({
         file: c.path,
         score: c.score.toFixed(3),
-        preview: c.chunk.slice(0, 120)
-    }))
+        preview: c.chunk.slice(0, 120),
+      })),
     });
-
   } catch (error) {
     console.error(error);
+    if (error.response?.status) {
+      return res.status(502).json({ error: "Vector search service unavailable" });
+    }
     res.status(500).json({ error: "Error processing question" });
   }
 };
-const ALLOWED_EXTENSIONS = [".js",".py",".jsx",".tsx",".java",".cpp",".json",".md"];
 
-const isValidFile = (fileName)=>{
-    return ALLOWED_EXTENSIONS.some(ext=>fileName.endsWith(ext));
+const ALLOWED_EXTENSIONS = [".js", ".py", ".jsx", ".tsx", ".java", ".cpp", ".json", ".md"];
+
+const isValidFile = (fileName) => {
+  return ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext));
 };
 
-// Large interview/cheat docs steal retrieval slots from real source files
 const SKIP_FILE_NAMES = new Set(["INTERVIEW_PREP.md"]);
 
 const shouldSkipFile = (filePath) => {
@@ -89,67 +87,77 @@ const shouldSkipFile = (filePath) => {
   return false;
 };
 
-const chunkText = (text,chunkSize = 1000 , overlap = 200)=>{
-    const chunks =[];
-    let start = 0;
-    while (start<text.length){
-        const end = start + chunkSize;
-        chunks.push(text.slice(start,end));
-        start = start + chunkSize - overlap;    
-    }
-    return chunks;
+const toFileText = (data) => {
+  if (typeof data === "string") return data;
+  if (data == null) return "";
+  return JSON.stringify(data, null, 2);
 };
 
-const fetchRepoContents = async (url , allFiles = []) =>{
-    try{
-        const { data } = await axios.get(url,{
-            headers:{
-                Authorization: `token ${process.env.GITHUB_TOKEN}`,
+const chunkText = (text, chunkSize = 1000, overlap = 200) => {
+  const source = toFileText(text);
+  const chunks = [];
+  let start = 0;
+  while (start < source.length) {
+    const end = start + chunkSize;
+    const piece = source.slice(start, end).trim();
+    if (piece) chunks.push(piece);
+    start = start + chunkSize - overlap;
+  }
+  return chunks;
+};
+
+const fetchRepoContents = async (url, allFiles = []) => {
+  try {
+    const { data } = await axios.get(url, {
+      headers: {
+        Authorization: `token ${process.env.GITHUB_TOKEN}`,
+      },
+    });
+    for (const item of data) {
+      if (item.type === "file" && isValidFile(item.name)) {
+        if (item.size > 50000) {
+          continue;
+        }
+        if (item.path.startsWith(".github")) {
+          continue;
+        }
+        if (shouldSkipFile(item.path)) {
+          continue;
+        }
+        console.log("FILE:", item.path);
+        try {
+          const fileContent = await axios.get(item.download_url, {
+            responseType: "text",
+            transformResponse: [(data) => data],
+            headers: {
+              Authorization: `token ${process.env.GITHUB_TOKEN}`,
             },
-        });
-        for(const item of data){
-            if(item.type === 'file' && isValidFile(item.name)){
-                if(item.size >50000){
-                    continue;   //avoid large files
-                }
-                if(item.path.startsWith(".github")){
-                    continue;
-                }
-                if (shouldSkipFile(item.path)) {
-                    continue;
-                }
-                console.log("FILE:", item.path);
-                try{
-                    const fileContent = await axios.get(item.download_url,{
-                        headers:{
-                            Authorization: `token ${process.env.GITHUB_TOKEN}`,
-                        },
-                    });
-                    const chunks = chunkText(fileContent.data);
-                    
-                    chunks.forEach((chunk,index)=>{
-                        allFiles.push({
-                        name :item.name,
-                        path:item.path,
-                        chunk : chunk,
-                        chunkIndex : index,
-                        });
-                    });
-                    
-                }catch(err){
-                    console.log("Skipping file:" , item.path);
-                }
-                
-            }
-            else if (item.type === 'dir'){
-                await fetchRepoContents(item.url,allFiles);
-            }
+          });
+          const fileText = toFileText(fileContent.data);
+          if (!fileText.trim()) continue;
+
+          const chunks = chunkText(fileText);
+
+          chunks.forEach((chunk, index) => {
+            allFiles.push({
+              name: item.name,
+              path: item.path,
+              chunk: chunk,
+              chunkIndex: index,
+            });
+          });
+        } catch (err) {
+          console.log("Skipping file:", item.path);
         }
-            return allFiles;
-        }catch(error){
-            console.error("error fetching repo :" , error.message);
-            return allFiles;
-        }
+      } else if (item.type === "dir") {
+        await fetchRepoContents(item.url, allFiles);
+      }
+    }
+    return allFiles;
+  } catch (error) {
+    console.error("error fetching repo :", error.message);
+    return allFiles;
+  }
 };
 
 export const analyzeRepo = async (req, res) => {
@@ -165,49 +173,34 @@ export const analyzeRepo = async (req, res) => {
       return res.status(400).json({ error: "Invalid GitHub URL" });
     }
     const { owner, repo } = parsedRepo;
+    const repoId = makeRepoId(owner, repo);
 
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents`;
 
-    // 🔹 Step 1: Fetch + chunk
     const allFiles = await fetchRepoContents(apiUrl);
 
-    console.log("Chunks before embedding:", allFiles.length);
+    console.log("Chunks before indexing:", allFiles.length);
 
     if (allFiles.length === 0) {
       return res.status(400).json({ error: "No valid files found or repo is empty" });
     }
 
-    // 🔹 Step 2: Extract chunk texts
-    const chunkTexts = allFiles.map(item => item.chunk);
+    const indexResult = await indexRepo(repoId, repoUrl, allFiles);
 
-    // 🔹 Step 3: Get embeddings
-    const embeddings = await getEmbeddings(chunkTexts);
-    if (!embeddings || embeddings.length !== chunkTexts.length || embeddings.some(e => !e)) {
-      return res.status(502).json({ error: "Embedding service unavailable" });
-    }
-    console.log("Embeddings length:", embeddings.length);
-    console.log("Sample embedding:", embeddings[0]?.slice(0, 5));
-    console.log("Type of value:", typeof embeddings[0]?.[0]);
+    setActiveRepoId(repoId);
 
-    // 🔹 Step 4: Combine
-    const enrichedData = allFiles.map((item, index) => ({
-      ...item,
-      embedding: embeddings[index],
-    }));
-
-    // 🔥 Step 5: STORE (IMPORTANT)
-    setChunks(enrichedData);
-
-    console.log("Stored chunks:", enrichedData.length);
+    console.log("Indexed chunks:", indexResult.indexed, "collection:", indexResult.collection);
 
     res.json({
       message: "Repo analyzed successfully",
-      totalChunks: enrichedData.length,
+      repoId,
+      totalChunks: indexResult.indexed,
     });
-
   } catch (error) {
     console.error(error);
+    if (error.response?.status) {
+      return res.status(502).json({ error: "Vector indexing service unavailable" });
+    }
     res.status(500).json({ error: "error analyzing repo" });
   }
 };
-

@@ -22,6 +22,7 @@ export default function App() {
   const [question, setQuestion] = useState("");
   const [sources, setSources] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
+  const [repoId, setRepoId] = useState(null);
   const [analyzed, setAnalyzed] = useState(false);
   const [analyzeStatus, setAnalyzeStatus] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -45,11 +46,13 @@ export default function App() {
     setChatHistory([]);
     setAnalyzed(false);
     setRepoInfo(null);
+    setRepoId(null);
 
     try {
       const response = await api.post("/repo/analyze", { repoUrl });
       const info = parseRepoLabel(repoUrl);
       setRepoInfo(info);
+      setRepoId(response.data?.repoId || null);
       setAnalyzeStatus(response.data?.message || "Repository indexed successfully");
       setAnalyzed(true);
     } catch (error) {
@@ -57,6 +60,7 @@ export default function App() {
       setAnalyzeStatus(message);
       setAnalyzed(false);
       setRepoInfo(null);
+      setRepoId(null);
     } finally {
       setIsAnalyzing(false);
     }
@@ -91,7 +95,8 @@ export default function App() {
     try {
       const response = await api.post("/repo/ask", {
         question: askedQuestion,
-        history: historyPayload
+        history: historyPayload,
+        repoId
       });
       const nextAnswer = response.data?.answer || "No answer returned";
       const nextSources = response.data?.sources || [];
