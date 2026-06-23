@@ -12,47 +12,46 @@ export default function SourceCard({ source, repoInfo }) {
   const score = clampScore(source.score);
   const percent = Math.round(score * 100);
   const fileUrl = githubFileUrl(repoInfo, source.file);
+  const fileName = source.file?.split("/").pop() || source.file;
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-black/60 p-4">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-lg border border-border-subtle bg-surface-raised p-3">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           {fileUrl ? (
             <a
               href={fileUrl}
               target="_blank"
               rel="noreferrer"
-              className="break-all text-sm text-neon-cyan hover:underline"
+              className="block truncate font-mono text-xs text-accent hover:underline"
+              title={source.file}
             >
-              {source.file}
+              {fileName}
             </a>
           ) : (
-            <p className="break-all text-sm text-slate-200">{source.file}</p>
+            <p className="truncate font-mono text-xs text-ink" title={source.file}>
+              {fileName}
+            </p>
           )}
-          <p className="mt-1 text-xs text-slate-500">Similarity score: {percent}%</p>
+          <p className="mt-0.5 truncate text-[11px] text-ink-faint">{source.file}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="shrink-0 text-xs text-neon-green transition hover:text-neon-cyan"
-        >
-          {open ? "HIDE" : "PREVIEW"}
-        </button>
+        <span className="shrink-0 rounded bg-surface-overlay px-1.5 py-0.5 font-mono text-[11px] text-ink-muted">
+          {percent}%
+        </span>
       </div>
 
-      <div className="mt-3 h-2 rounded-full bg-slate-800">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-neon-green to-neon-cyan transition-all"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="mt-2 text-[11px] text-ink-faint transition hover:text-ink-muted"
+      >
+        {open ? "Hide snippet" : "Show snippet"}
+      </button>
 
       {open && (
-        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/90 p-3 text-xs text-slate-200">
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono">
-            {source.preview || "No preview available"}
-          </pre>
-        </div>
+        <pre className="mt-2 max-h-36 overflow-auto rounded-md border border-border-subtle bg-surface p-2.5 font-mono text-[11px] leading-relaxed text-ink-muted whitespace-pre-wrap">
+          {source.preview || "No preview"}
+        </pre>
       )}
     </div>
   );

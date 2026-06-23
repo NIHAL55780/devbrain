@@ -5,48 +5,46 @@ export default function AnswerCard({ history, onClearChat }) {
   const canClear = items.length > 0 && typeof onClearChat === "function";
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6 shadow-glow">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="heading-font text-lg text-neon-green">Conversation</h2>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500">
-            {items.length === 0 ? "No messages" : `${items.length} turn${items.length === 1 ? "" : "s"}`}
-          </span>
-          {canClear && (
-            <button
-              type="button"
-              onClick={onClearChat}
-              className="text-xs text-slate-400 transition hover:text-neon-cyan"
-            >
-              Clear chat
-            </button>
-          )}
-        </div>
+    <section className="panel flex min-h-[420px] flex-col p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-ink">Chat</h2>
+        {canClear && (
+          <button
+            type="button"
+            onClick={onClearChat}
+            className="text-xs text-ink-faint transition hover:text-ink-muted"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
-      <div className="mt-4 max-h-[min(520px,60vh)] min-h-[220px] space-y-4 overflow-y-auto rounded-xl border border-slate-800 bg-black/70 p-4">
+      <div className="chat-scroll mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain pr-1 max-h-[min(480px,55vh)]">
         {items.length === 0 ? (
-          <p className="text-sm text-slate-500">Ask a question to start the conversation.</p>
+          <p className="text-sm text-ink-faint">Your questions and answers show up here.</p>
         ) : (
           items.map((entry, index) => (
-            <div
-              key={entry.id ?? `turn-${index}`}
-              className={`rounded-lg border p-3 ${
-                entry.isError
-                  ? "border-red-900/60 bg-red-950/20"
-                  : "border-slate-800 bg-slate-950/70"
-              }`}
-            >
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Question</p>
-              <p className="mt-1 text-sm text-neon-cyan">{entry.question}</p>
-              <p className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-500">Answer</p>
-              {entry.pending ? (
-                <p className="mt-1 text-sm text-neon-green">Generating answer...</p>
-              ) : (
-                <div className="mt-1">
-                  <MarkdownAnswer content={entry.answer} error={entry.isError} />
+            <div key={entry.id ?? `turn-${index}`} className="space-y-3">
+              <div className="flex justify-end">
+                <div className="max-w-[90%] rounded-2xl rounded-br-md bg-accent/15 px-3.5 py-2.5 text-sm text-ink">
+                  {entry.question}
                 </div>
-              )}
+              </div>
+              <div className="flex justify-start">
+                <div
+                  className={`max-w-[95%] rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm ${
+                    entry.isError
+                      ? "border border-red-900/50 bg-red-950/30 text-red-300"
+                      : "border border-border-subtle bg-surface-raised text-ink"
+                  }`}
+                >
+                  {entry.pending ? (
+                    <span className="text-ink-muted">Thinking…</span>
+                  ) : (
+                    <MarkdownAnswer content={entry.answer} error={entry.isError} />
+                  )}
+                </div>
+              </div>
             </div>
           ))
         )}

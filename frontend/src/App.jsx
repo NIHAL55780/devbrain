@@ -53,7 +53,11 @@ export default function App() {
       const info = parseRepoLabel(repoUrl);
       setRepoInfo(info);
       setRepoId(response.data?.repoId || null);
-      setAnalyzeStatus(response.data?.message || "Repository indexed successfully");
+      setAnalyzeStatus(
+        response.data?.totalChunks
+          ? `Indexed ${response.data.totalChunks} chunks.`
+          : response.data?.message || "Repository indexed successfully"
+      );
       setAnalyzed(true);
     } catch (error) {
       const message = error?.response?.data?.error || "Failed to analyze repo";
@@ -91,6 +95,7 @@ export default function App() {
     askInFlightRef.current = true;
     setIsAsking(true);
     setChatHistory((prev) => [...prev, pendingTurn]);
+    setQuestion("");
 
     try {
       const response = await api.post("/repo/ask", {
@@ -132,11 +137,11 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell min-h-screen px-4 py-8 text-slate-100 sm:px-6 sm:py-10">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 sm:gap-8">
+    <div className="app-shell min-h-screen px-4 py-10 sm:px-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
         <Header indexedRepo={indexedRepo} />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <RepoInput
             repoUrl={repoUrl}
             setRepoUrl={setRepoUrl}
@@ -158,19 +163,17 @@ export default function App() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.35fr_1fr]">
           <AnswerCard history={chatHistory} onClearChat={handleClearChat} />
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 shadow-glow">
-            <div className="flex items-center justify-between">
-              <h3 className="heading-font text-lg text-neon-cyan">Sources</h3>
-              <span className="text-xs text-slate-400">Top matches</span>
-            </div>
-            <div className="mt-4 max-h-[min(420px,50vh)] space-y-4 overflow-y-auto pr-1">
+          <aside className="panel p-5">
+            <h2 className="text-sm font-medium text-ink">Sources</h2>
+            <p className="mt-1 text-xs text-ink-faint">Files retrieved for the last answer</p>
+            <div className="mt-4 max-h-[min(480px,55vh)] space-y-2 overflow-y-auto">
               {sources.length === 0 ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-xs leading-relaxed text-ink-faint">
                   {analyzed
-                    ? "Ask a question to see retrieved code chunks."
-                    : "Analyze a repo first."}
+                    ? "Ask something — matching code chunks appear here."
+                    : "Index a repo to get started."}
                 </p>
               ) : (
                 sources.map((source, index) => (
@@ -182,7 +185,7 @@ export default function App() {
                 ))
               )}
             </div>
-          </section>
+          </aside>
         </div>
       </div>
     </div>

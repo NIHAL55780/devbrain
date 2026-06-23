@@ -7,19 +7,62 @@
 }
 
 body {
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  background-color: #07090b;
+  font-family: Inter, system-ui, sans-serif;
+  background-color: #0e1014;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .app-shell {
-  background-image:
-    linear-gradient(rgba(34, 247, 185, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(34, 247, 185, 0.06) 1px, transparent 1px),
-    radial-gradient(circle at top, rgba(45, 243, 255, 0.08), transparent 55%);
-  background-size: 42px 42px, 42px 42px, 100% 100%;
-  background-position: -1px -1px, -1px -1px, center top;
+  background-color: #0e1014;
+  background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 156, 255, 0.08), transparent);
 }
 
-.heading-font {
-  font-family: "Space Grotesk", "IBM Plex Mono", sans-serif;
+@layer components {
+  .panel {
+    @apply rounded-xl border border-border bg-surface shadow-card;
+  }
+
+  .field-input {
+    @apply w-full rounded-lg border border-border bg-surface-overlay px-3.5 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-faint focus:border-accent/50 focus:ring-2 focus:ring-accent/15 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface-raised px-4 py-2.5 text-sm font-medium text-ink transition hover:border-border hover:bg-surface-overlay disabled:cursor-not-allowed disabled:opacity-40;
+  }
+}
+
+.markdown-answer strong {
+  font-weight: 600;
+  color: #eceef2;
+}
+
+.markdown-answer code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.8125rem;
+}
+
+.chat-scroll {
+  scroll-behavior: smooth;
+}
+
+.chat-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: #2d323c;
+  border-radius: 999px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: #3d4450;
 }
