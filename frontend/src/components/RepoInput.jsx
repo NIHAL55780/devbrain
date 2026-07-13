@@ -54,7 +54,7 @@ export default function RepoInput({
           {analyzeFailed
             ? analyzeStatus
             : showDefaultStatus
-              ? "Ready — ask a question below."
+              ? "Ready — use the tabs below to ask questions."
               : analyzeStatus || "We’ll fetch files, chunk them, and store embeddings in Chroma."}
         </p>
       </div>

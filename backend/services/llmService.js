@@ -99,3 +99,83 @@ Follow the output format exactly.
     return "Error generating answer";
   }
 };
+
+export const generateEvolutionAnswer = async (question, commits, history = []) => {
+  try {
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error("GROQ_API_KEY missing");
+    }
+
+    const groq = new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+    });
+
+    const timeline = commits
+      .map((commit, index) => {
+        const shortSha = commit.commitSha?.slice(0, 7) || "unknown";
+        const date = commit.date ? commit.date.slice(0, 10) : "unknown date";
+        return `Entry ${index + 1}
+Commit: ${shortSha} (${date})
+Author: ${commit.author || "unknown"}
+Message: ${commit.message || ""}
+Files: ${commit.paths || ""}
+Summary: ${commit.summary || ""}`;
+      })
+      .join("\n\n---\n\n");
+
+    const conversation = formatHistory(history);
+
+    const response = await groq.chat.completions.create({
+      model: "openai/gpt-oss-120b",
+      messages: [
+        {
+          role: "system",
+          content: `You explain how a codebase evolved over time using commit timeline entries.
+
+Rules:
+- Answer ONLY using the provided commit timeline
+- Present changes in chronological order
+- Mention commit SHAs (short) and dates when relevant
+- Explain what changed and why when the summary supports it
+- If reason is unclear, say so — do not invent motivations
+- If timeline does not cover the question, say what is missing
+- Do NOT hallucinate commits or changes
+
+Output format:
+Title: <short evolution summary>
+
+Timeline:
+- Commit <sha> (<date>): <what changed>. Reason: <from summary or "unclear">
+
+Summary:
+- <1-3 bullets on overall evolution pattern>
+
+Gaps:
+- <missing info or "None">`,
+        },
+        {
+          role: "user",
+          content: `Commit timeline (oldest to newest):
+${timeline}
+
+Conversation so far:
+${conversation}
+
+Question:
+${question}
+
+Follow the output format exactly.`,
+        },
+      ],
+    });
+
+    const answer = response.choices[0].message.content;
+    if (!answer || answer.trim() === "") {
+      return "No meaningful evolution answer generated";
+    }
+    return answer;
+  } catch (error) {
+    console.error("Groq evolution error:", error.message);
+    return "Error generating evolution answer";
+  }
+};

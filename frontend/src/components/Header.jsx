@@ -7,8 +7,8 @@ export default function Header({ indexedRepo }) {
           Ask questions about a repo
         </h1>
         <p className="mt-2 max-w-lg text-sm leading-relaxed text-ink-muted">
-          Paste a GitHub link, index the code, then chat with it. Answers cite the files they came
-          from.
+          Paste a GitHub link, index the code, then ask about the current codebase or how it
+          evolved over time.
         </p>
       </div>
       {indexedRepo && (

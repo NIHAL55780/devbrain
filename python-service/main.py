@@ -39,12 +39,42 @@ class SearchRequest(BaseModel):
     topK: int = 8
 
 
+class TimelineItem(BaseModel):
+    commitSha: str
+    date: str
+    author: str
+    message: str
+    paths: str
+    summary: str
+
+
+class TimelineIndexRequest(BaseModel):
+    repoId: str
+    repoUrl: str
+    commits: list[TimelineItem]
+
+
+class TimelineSearchRequest(BaseModel):
+    repoId: str
+    question: str
+    topK: int = 12
+
+
 def collection_name(repo_id: str) -> str:
     safe = re.sub(r"[^a-zA-Z0-9_]", "_", repo_id)
     safe = re.sub(r"_+", "_", safe).strip("_")
     if not safe:
         safe = "default"
     name = f"repo_{safe}"
+    return name[:63]
+
+
+def timeline_collection_name(repo_id: str) -> str:
+    base = collection_name(repo_id)
+    suffix = "_timeline"
+    if base.endswith(suffix):
+        return base[:63]
+    name = f"{base}{suffix}"
     return name[:63]
 
 
@@ -225,3 +255,155 @@ def stats(repo_id: str):
         raise HTTPException(status_code=404, detail="No repo indexed for this repoId")
 
     return {"repoId": repo_id, "collection": name, "chunkCount": collection.count()}
+
+
+@app.post("/index/timeline")
+def index_timeline(req: TimelineIndexRequest):
+    if not req.commits:
+        raise HTTPException(status_code=400, detail="commits is required")
+    if not req.repoId.strip():
+        raise HTTPException(status_code=400, detail="repoId is required")
+
+    name = timeline_collection_name(req.repoId)
+    try:
+        client.delete_collection(name)
+    except Exception:
+        pass
+
+    collection = client.create_collection(
+        name=name,
+        metadata={"hnsw:space": "cosine"},
+    )
+
+    ids: list[str] = []
+    documents: list[str] = []
+    metadatas: list[dict] = []
+
+    for item in req.commits:
+        summary = sanitize_text(item.summary)
+        message = sanitize_text(item.message)
+        paths = sanitize_text(item.paths)
+        if not summary and not message:
+            continue
+
+        doc = f"{summary}\n\nCommit message: {message}\nFiles: {paths}".strip()
+        if not doc:
+            continue
+
+        ids.append(item.commitSha[:40])
+        documents.append(doc)
+        metadatas.append(
+            {
+                "commitSha": item.commitSha[:40],
+                "date": item.date[:40],
+                "author": item.author[:80],
+                "message": message[:500],
+                "paths": paths[:500],
+                "summary": summary[:500],
+                "repoUrl": req.repoUrl[:200],
+            }
+        )
+
+    if not documents:
+        raise HTTPException(status_code=400, detail="No valid commits to index")
+
+    indexed_ids: list[str] = []
+    indexed_docs: list[str] = []
+    indexed_meta: list[dict] = []
+    indexed_embeddings: list[list[float]] = []
+
+    for doc_id, doc, meta in zip(ids, documents, metadatas):
+        try:
+            embedding = embed_texts([doc])[0]
+        except Exception as exc:
+            print(f"Skipping commit {doc_id}: {exc}")
+            continue
+        indexed_ids.append(doc_id)
+        indexed_docs.append(doc)
+        indexed_meta.append(meta)
+        indexed_embeddings.append(embedding)
+
+    if not indexed_docs:
+        raise HTTPException(status_code=400, detail="No valid commits to index")
+
+    for start in range(0, len(indexed_docs), INDEX_BATCH_SIZE):
+        end = start + INDEX_BATCH_SIZE
+        collection.add(
+            ids=indexed_ids[start:end],
+            embeddings=indexed_embeddings[start:end],
+            documents=indexed_docs[start:end],
+            metadatas=indexed_meta[start:end],
+        )
+
+    return {"indexed": len(indexed_ids), "repoId": req.repoId, "collection": name}
+
+
+@app.post("/search/timeline")
+def search_timeline(req: TimelineSearchRequest):
+    if not req.repoId.strip():
+        raise HTTPException(status_code=400, detail="repoId is required")
+    question = sanitize_text(req.question)
+    if not question:
+        raise HTTPException(status_code=400, detail="question is required")
+
+    name = timeline_collection_name(req.repoId)
+    try:
+        collection = client.get_collection(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail="No timeline indexed for this repoId")
+
+    if collection.count() == 0:
+        raise HTTPException(status_code=404, detail="No commits indexed for this repoId")
+
+    query_embedding = model.encode([question], convert_to_numpy=True).tolist()
+    candidate_count = min(max(req.topK * 3, req.topK), 60, collection.count())
+
+    results = collection.query(
+        query_embeddings=query_embedding,
+        n_results=candidate_count,
+        include=["documents", "metadatas", "distances"],
+    )
+
+    seen_shas: set[str] = set()
+    selected: list[dict] = []
+
+    for doc, meta, dist in zip(
+        results["documents"][0],
+        results["metadatas"][0],
+        results["distances"][0],
+    ):
+        sha = meta["commitSha"]
+        if sha in seen_shas:
+            continue
+        seen_shas.add(sha)
+        score = 1 - dist
+        selected.append(
+            {
+                "commitSha": sha,
+                "date": meta.get("date", ""),
+                "author": meta.get("author", ""),
+                "message": meta.get("message", ""),
+                "paths": meta.get("paths", ""),
+                "summary": meta.get("summary", doc),
+                "score": score,
+            }
+        )
+
+    selected.sort(key=lambda item: item["score"], reverse=True)
+    if len(selected) > req.topK:
+        selected = selected[: req.topK]
+
+    selected.sort(key=lambda item: item.get("date", ""))
+
+    return {"commits": selected, "repoId": req.repoId}
+
+
+@app.get("/stats/timeline/{repo_id}")
+def timeline_stats(repo_id: str):
+    name = timeline_collection_name(repo_id)
+    try:
+        collection = client.get_collection(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail="No timeline indexed for this repoId")
+
+    return {"repoId": repo_id, "collection": name, "commitCount": collection.count()}
